@@ -1,0 +1,15 @@
+{
+  "name": "catia-magic-web-tests",
+  "private": true,
+  "description": "Mock Report Wizard rendering (velocityjs) and Playwright browser tests for the CATIA Magic Web 3.0 template",
+  "scripts": {
+    "build": "python3 ../source/build.py \"../template/CATIA Magic Web 3.0/web\"",
+    "test": "./run-all.sh",
+    "big": "node --max-old-space-size=12000 render-big.js \"../template/CATIA Magic Web 3.0\" out/big 60000 150 2500 && node measure.js out/big big-60k",
+    "screenshots": "node render.js \"../template/CATIA Magic Web 3.0\" out/small && node docshots.js out/small ../docs/images"
+  },
+  "devDependencies": {
+    "playwright": "^1.50.0",
+    "velocityjs": "^2.0.0"
+  }
+}

@@ -1,0 +1,208 @@
+#*
+  CATIA Magic Web 3.0 (3.0.3) - Report Wizard (Velocity) template.
+
+  - index.html is a small shell that paints a loading screen immediately. Model data is written by
+    $file.create() into data/*.js chunk files (cmw-elements.txt, cmw-diagrams.txt, cmw-props.txt).
+    The viewer loads them one at a time as <script> files (allowed from file://, unlike XHR/fetch),
+    with a progress bar, so the page never freezes. Specification properties load only on demand.
+  - Template variable DataFiles=false writes everything inline instead (3.0.1 behaviour).
+  - Every model string goes through #x(); see vm-src/macros.vm.
+  - Diagram images are printed DIRECTLY ($dImg) in this HTML template: that is what makes Report
+    Wizard export the image file. Never pass an image through a macro or toString().
+*#
+@@MACROS@@
+#macro(toBoolean $tbV $tbDefault)
+#set($boolVar = $tbDefault)
+#if($tbV == 'true' || $tbV == true)
+#set($boolVar = true)
+#elseif($tbV == 'false' || $tbV == false)
+#set($boolVar = false)
+#end
+#end
+## ---------- options ----------
+#toBoolean($UseContextMenu, true)#set($useContextMenu = $boolVar)
+#toBoolean($ExportLinkedFile, true)#set($linkedFile = $boolVar)
+#toBoolean($ShowAppearsInPage, true)#set($appearsIn = $boolVar)
+#toBoolean($DisplayTreeElementId, false)#set($treeIds = $boolVar)
+#toBoolean($ShowAppliedStereotypes, false)#set($treeStereo = $boolVar)
+#toBoolean($SVGDiagramResizable, true)#set($fitDiagrams = $boolVar)
+#toBoolean($DiagramHotspots, true)#set($hotspots = $boolVar)
+#toBoolean($IncludeAllProperties, true)#set($includeProps = $boolVar)
+#toBoolean($DataFiles, true)#set($dataFiles = $boolVar)
+#toBoolean($DiagramPreviews, false)#set($previews = $boolVar)
+#set($chunkSize = 1500)
+#set($diagramChunkSize = 10)
+## ---------- resources ----------
+#if($template.resourcesLocation != '' && !$template.resourcesLocation.endsWith('/'))
+#set($resourcesLocation = $template.resourcesLocation + '/')
+#else
+#set($resourcesLocation = $template.resourcesLocation)
+#end
+#set($prefixLocation = $file.computeName($resourcesLocation, ''))
+#set($outCss = $prefixLocation + 'css/cmw.css')
+#set($outJs = $prefixLocation + 'js/cmw.js')
+#set($outPurify = $prefixLocation + 'js/vendor/purify.min.js')
+#set($outLogo = $prefixLocation + 'images/cmw-logo.svg')
+#set($outIcon = $prefixLocation + 'images/favicon.svg')
+#set($cssPath = $file.copy('css/cmw.css', $outCss))
+#set($jsPath = $file.copy('js/cmw.js', $outJs))
+#set($purifyPath = $file.copy('js/vendor/purify.min.js', $outPurify))
+#set($logoPath = $file.copy('images/cmw-logo.svg', $outLogo))
+#set($iconPath = $file.copy('images/favicon.svg', $outIcon))
+## ---------- home page image (same options as Web Publisher 2.0) ----------
+#set($homeImage = '')
+#set($homeDiagram = '')
+#set($homeName = '')
+#if($HomeImage)#set($homeName = $HomeImage.toString().trim())#end
+#if($homeName != '')
+#if($homeName.startsWith('mdel://'))
+#set($homeEl = $project.getElementByID($homeName.substring(7)))
+#if(!$report.isEmpty($homeEl))#set($homeImage = $homeEl.image)#end
+#elseif($homeName.startsWith('file://'))
+#set($homeImage = $image.copy($homeName.substring(7)))
+#elseif($homeName.startsWith('http://') || $homeName.startsWith('https://'))
+#set($homeImage = $homeName)
+#elseif($homeName.startsWith('/'))
+#set($homeImage = $image.copy($homeName.substring(1)))
+#else
+#set($homeDiagramEl = $report.findDiagramByName($homeName))
+#if($homeDiagramEl)#set($homeDiagram = $homeDiagramEl.ID)#else#set($homeImage = $image.copy($homeName))#end
+#end
+#end
+## ---------- scope ----------
+#set($scope = $elements)
+#set($scope = $report.filterVisibleElement($elements))
+#set($titleText = $Title)
+#if($report.isEmpty($titleText))#set($titleText = $project.title)#end
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data: https: http:; media-src 'self' file: https:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="author" content="#x($Author)">
+<meta name="generator" content="CATIA Magic Web 3.0.3">
+<title>#x($titleText)</title>
+<link rel="icon" type="image/svg+xml" href="$iconPath">
+<link rel="stylesheet" href="$cssPath">
+<script src="$purifyPath" defer></script>
+<script src="$jsPath" defer></script>
+</head>
+<body
+ data-format="3"
+ data-title="#x($Title)"
+ data-author="#x($Author)"
+ data-project="#x($project.title)"
+ data-generated="#x($date.get('yyyy-MM-dd HH:mm'))"
+ data-logo="$logoPath"
+ data-home-image="#x($homeImage)"
+ data-home-diagram="#x($homeDiagram)"
+ data-context-menu="$useContextMenu"
+ data-appears-in="$appearsIn"
+ data-tree-ids="$treeIds"
+ data-tree-stereotypes="$treeStereo"
+ data-fit-diagrams="$fitDiagrams"
+ data-hotspots="$hotspots"
+ data-props="$includeProps"
+ data-previews="$previews">
+<div id="cmw-app" class="cmw-loading" aria-busy="true">
+ <div class="cmw-load-card" role="status" aria-live="polite">
+  <div class="cmw-load-brand"><img src="$logoPath" alt="" width="40" height="40"><span><strong>CATIA Magic</strong> Web</span></div>
+  <h1 class="cmw-load-title">#x($titleText)</h1>
+  <div class="cmw-bar" aria-hidden="true"><div class="cmw-bar-fill" id="cmw-bar"></div></div>
+  <p id="cmw-status">Opening publication&hellip;</p>
+  <div class="cmw-slow">
+   <p>Still working&hellip; large models can take a little while.</p>
+   <details><summary>Nothing happening?</summary>
+    <ul>
+     <li>Keep this page next to its <code>_files</code> folder: the viewer, styles and model data live there.</li>
+     <li>If this message never changes, scripts may be blocked. Press F12 and check the Console for errors.</li>
+     <li>Very large models: regenerate with <em>IncludeAllProperties</em> = false to make the publication smaller.</li>
+    </ul>
+   </details>
+  </div>
+  <noscript><p class="cmw-noscript">CATIA Magic Web needs JavaScript to display the model.</p></noscript>
+ </div>
+</div>
+#if($dataFiles)
+## ---------- split mode: write data chunk files, list them in a manifest ----------
+<template id="cmw-files">
+#set($total = $scope.size())
+#set($start = 0)#set($i = 0)#set($ci = 0)
+#foreach($e in $scope)
+#set($i = $i + 1)
+#set($fill = $i - $start)
+#if($fill == $chunkSize || $i == $total)
+#set($ci = $ci + 1)
+#set($slice = '')
+#set($slice = $scope.subList($start, $i))
+#set($args = $map.createHashMap())
+#set($void = $args.put('items', $slice))
+#set($void = $args.put('all', $scope))
+#set($void = $args.put('from', $start))
+#set($void = $args.put('to', $i))
+#set($void = $args.put('chunk', $ci))
+#set($void = $args.put('linkedFile', $linkedFile))
+#set($void = $args.put('hotspots', $hotspots))
+#set($outE = $prefixLocation + 'data/e' + $ci + '.js')
+#set($resE = '')
+#set($resE = $file.create('cmw-elements.txt', $outE, $args))
+<x-f data-k="e" data-n="$ci" data-src="#x($outE)" data-res="#x($resE)" data-c="$fill"></x-f>
+#if($includeProps)
+#set($outP = $prefixLocation + 'data/p' + $ci + '.js')
+#set($resP = '')
+#set($resP = $file.create('cmw-props.txt', $outP, $args))
+<x-f data-k="p" data-n="$ci" data-src="#x($outP)" data-res="#x($resP)" data-c="$fill"></x-f>
+#end
+#set($start = $i)
+#end
+#end
+#set($dTotal = $Diagram.size())
+#set($start = 0)#set($i = 0)#set($ci = 0)
+#foreach($d in $Diagram)
+#set($i = $i + 1)
+#set($fill = $i - $start)
+#if($fill == $diagramChunkSize || $i == $dTotal)
+#set($ci = $ci + 1)
+#set($slice = '')
+#set($slice = $Diagram.subList($start, $i))
+#set($args = $map.createHashMap())
+#set($void = $args.put('items', $slice))
+#set($void = $args.put('all', $Diagram))
+#set($void = $args.put('from', $start))
+#set($void = $args.put('to', $i))
+#set($void = $args.put('chunk', $ci))
+#set($void = $args.put('hotspots', $hotspots))
+#set($outD = $prefixLocation + 'data/d' + $ci + '.js')
+#set($resD = '')
+#set($resD = $file.create('cmw-diagrams.txt', $outD, $args))
+<x-f data-k="d" data-n="$ci" data-src="#x($outD)" data-res="#x($resD)" data-c="$fill"></x-f>
+#set($start = $i)
+#end
+#end
+## Diagram images: printed directly here so Report Wizard exports them (inside <template> they stay inert)
+#foreach($d in $Diagram)
+#set($dImg = '')
+#set($dImg = $d.image)
+#if($dImg != '')<x-di data-id="#x($d.ID)" data-iw="$!dImg.width" data-ih="$!dImg.height"><img src="$dImg" alt=""></x-di>
+#end
+#end
+</template>
+#else
+## ---------- inline mode (DataFiles=false): everything in this page, like 3.0.1 ----------
+<template id="cmw-data">
+#foreach($e in $scope)
+#if(!$report.isNull($e))#elem($e)#if($includeProps)#props($e)#end#end
+#end
+#foreach($d in $Diagram)
+#dia($d)
+#set($dImg = '')
+#set($dImg = $d.image)
+#if($dImg != '')<x-di data-id="#x($d.ID)" data-iw="$!dImg.width" data-ih="$!dImg.height"><img src="$dImg" alt=""></x-di>
+#end
+#end
+</template>
+#end
+</body>
+</html>

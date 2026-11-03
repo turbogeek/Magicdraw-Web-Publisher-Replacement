@@ -1,0 +1,15 @@
+@@MACROS@@
+##  CATIA Magic Web 3.0 data file (diagram details: documentation, shapes, bounds).
+CMW_CHUNK('d', $chunk, String.raw`
+#if($items != '')
+#foreach($d in $items)
+#dia($d)
+#end
+#else
+#set($k = 0)
+#foreach($d in $all)
+#if($k >= $from && $k < $to)#dia($d)#end
+#set($k = $k + 1)
+#end
+#end
+`);

@@ -1,0 +1,102 @@
+## ---------- shared macros (generated into every template by build.py; edit vm-src/macros.vm) ----------
+## #x: escape for HTML text/attributes AND for a JS String.raw template literal (backtick, dollar).
+## Uses only single-quoted literals without backslashes, so it behaves the same on Velocity 1.7 and 2.x.
+#macro(x $xv)$!{xv.toString().replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;').replace('`','&#96;').replace('$','&#36;')}#end
+## getRepresentationText() already returns HTML-escaped text: unescape it before escaping once
+#macro(nm $nmEl)#if($report.isEmpty($nmEl.name))#set($repText = '')#set($repText = $report.getRepresentationText($nmEl))#x($repText.replace('&lt;','<').replace('&gt;','>').replace('&quot;','"').replace('&amp;','&'))#else#x($nmEl.name)#end#end
+#macro(pv $pvObj)#if($pvObj.ID)<x-r data-ref="#x($pvObj.ID)">#nm($pvObj)</x-r>#else<x-t>#x($pvObj)</x-t>#end#end
+## ---- one model element (no Specification properties: those go to the props files)
+#macro(elem $eEl)
+<x-e data-id="#x($eEl.ID)" data-o="#x($eEl.owner.ID)" data-t="#x($eEl.humanType)" data-n="#nm($eEl)"#if($report.isRelationship($eEl)) data-rel="1"#end>
+#if($report.isRelationship($eEl))
+#set($relClient = '')
+#set($relClient = $report.getClientElement($eEl))
+#set($relSupplier = '')
+#set($relSupplier = $report.getSupplierElement($eEl))
+#if($relClient.ID && $relSupplier.ID)<x-src data-ref="#x($relClient.ID)">#nm($relClient)</x-src><x-tgt data-ref="#x($relSupplier.ID)">#nm($relSupplier)</x-tgt>
+#else#foreach($re in $eEl.relatedElement)<x-end data-ref="#x($re.ID)">#nm($re)</x-end>#end
+
+#end
+#end
+#if($linkedFile && $report.isAttachedFile($eEl))
+#set($attPath = '')
+#set($attPath = $file.copy($eEl))
+#if(!$report.isEmpty($attPath))<x-file data-href="#x($attPath)"></x-file>
+#end
+#end
+## Comments and notes: their text is the Comment body (often HTML), not documentation
+#if($report.isTypeOf($eEl, 'Comment'))
+#set($cBody = '')
+#set($cBody = $eEl.body)
+#if(!$report.isEmpty($cBody))<x-body>#x($cBody)</x-body>
+#end
+#end
+#body($eEl)
+</x-e>
+#end
+## ---- documentation + stereotypes/tagged values
+#macro(body $bEl)
+#set($doc = '')
+#set($doc = $report.getComment($bEl))
+#if(!$report.isEmpty($doc))<x-doc>#x($doc)</x-doc>
+#end
+#if($report.hasStereotype($bEl))
+#foreach($st in $report.getStereotypes($bEl))
+<x-s data-n="#x($st.name)">#foreach($sa in $st.ownedAttribute)#if(!$report.isEmpty($sa.name) && !$sa.name.startsWith('base_'))#set($tv = '')#set($tv = $report.getStereotypePropertyString($bEl, $st, $sa.name, ', '))#if(!$report.isEmpty($tv))<x-v data-n="#x($sa.name)">#x($tv)</x-v>#end#end#end</x-s>
+#end
+#end
+#end
+## ---- the full Specification property list of one element
+#macro(props $pEl)
+#set($plist = '')
+#set($plist = $report.getElementProperties($pEl))
+#if($plist != '')<x-pp data-id="#x($pEl.ID)">#foreach($p in $plist)#set($pval = '')#set($pval = $p.value)#if(!$report.isEmpty($pval))<x-p data-n="#x($p.name)">#if($pval.iterator())#foreach($pi in $pval)#pv($pi)#end#else#pv($pval)#end</x-p>#end#end</x-pp>
+#end
+#end
+## ---- one diagram: documentation, shapes (for hotspots) and the drawn-content bounds (for alignment).
+## The image itself is written by index.html (#dimg), because only the main HTML template exports images.
+#macro(dia $dD)
+#set($void = $report.ensureLoad($dD))
+<x-d data-id="#x($dD.ID)" data-o="#x($dD.owner.ID)" data-t="#x($report.getDiagramType($dD))" data-n="#nm($dD)">
+#body($dD)
+#if($hotspots)
+#set($ux0 = '')#set($uy0 = '')#set($ux1 = '')#set($uy1 = '')
+#foreach($pe in $report.getPresentationDiagramElements($dD, true))
+#set($peB = '')
+#set($peB = $pe.bounds)
+#if($peB != '')
+#set($peR = $peB.x + $peB.width)
+#set($peBt = $peB.y + $peB.height)
+#if($ux0 == '' || $peB.x < $ux0)#set($ux0 = $peB.x)#end
+#if($uy0 == '' || $peB.y < $uy0)#set($uy0 = $peB.y)#end
+#if($ux1 == '' || $peR > $ux1)#set($ux1 = $peR)#end
+#if($uy1 == '' || $peBt > $uy1)#set($uy1 = $peBt)#end
+#end
+#end
+#if($ux0 != '')<x-u data-x0="$ux0" data-y0="$uy0" data-x1="$ux1" data-y1="$uy1"></x-u>
+#end
+#end
+#foreach($de in $report.getDiagramElements($dD))
+#if(!$report.isNull($de))
+#if($report.isRelationship($de))<x-h data-ref="#x($de.ID)" data-rel="1"></x-h>
+#else<x-h data-ref="#x($de.ID)">#if($hotspots)#foreach($rc in $report.getPresentationElementRectangle($dD, $de))<x-b data-x="$rc.x" data-y="$rc.y" data-w="$rc.width" data-h="$rc.height"></x-b>#end#end</x-h>
+#end
+#end
+#end
+</x-d>
+#end
+## ---------- end of shared macros ----------
+##  CATIA Magic Web 3.0 data file (diagram details: documentation, shapes, bounds).
+CMW_CHUNK('d', $chunk, String.raw`
+#if($items != '')
+#foreach($d in $items)
+#dia($d)
+#end
+#else
+#set($k = 0)
+#foreach($d in $all)
+#if($k >= $from && $k < $to)#dia($d)#end
+#set($k = $k + 1)
+#end
+#end
+`);

@@ -1,0 +1,15 @@
+@@MACROS@@
+##  CATIA Magic Web 3.0 data file (Specification properties, loaded on demand).
+CMW_CHUNK('p', $chunk, String.raw`
+#if($items != '')
+#foreach($e in $items)
+#if(!$report.isNull($e))#props($e)#end
+#end
+#else
+#set($k = 0)
+#foreach($e in $all)
+#if($k >= $from && $k < $to && !$report.isNull($e))#props($e)#end
+#set($k = $k + 1)
+#end
+#end
+`);
