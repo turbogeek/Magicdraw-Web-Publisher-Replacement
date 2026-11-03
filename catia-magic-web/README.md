@@ -186,6 +186,7 @@ The theme menu in the header offers **System** (follows the OS), **Light**, **Da
 |---|---|
 | ![Dark theme](docs/images/theme-dark-diagram.png) | ![Kawaii theme](docs/images/theme-kawaii.png) |
 
+**Kawaii (かわいい or 可愛い)** is a Japanese cultural phenomenon that translates to "cute," "adorable," or "loveable." It is much more than a simple style; it is a widespread social and artistic force emphasizing innocence, charm, playfulness, and comfort.
 ### Home page
 
 The home page shows a summary, then diagrams listed by type and the top-level packages.
