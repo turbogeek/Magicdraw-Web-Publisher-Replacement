@@ -7,7 +7,8 @@ Use at your own risk! **No Warranty!** No support from me (unless you are nice)!
 ## Quick Start
 
 **Step 1 - ** Clone this repository.
-**Step 2 - ** In Cameo/CATIA Magic Report Wizard, create a new template (here is an example)
+
+**Step 2 - ** In Cameo/CATIA Magic Report Wizard, create a new template and set the template file to the index.html. Here is an example
 <img width="1181" height="586" alt="image" src="https://github.com/user-attachments/assets/264c8dca-c369-4176-85a1-e2b8e13eb990" />
 **Step 3 - ** Run the template as normal, but please use SVG rather than PNG or JPG.
 
