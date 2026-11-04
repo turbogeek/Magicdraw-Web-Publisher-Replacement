@@ -1,5 +1,5 @@
 #*
-  CATIA Magic Web 3.0 (3.0.3) - Report Wizard (Velocity) template.
+  CATIA Magic Web 3.0 (3.0.4) - Report Wizard (Velocity) template.
 
   - index.html is a small shell that paints a loading screen immediately. Model data is written by
     $file.create() into data/*.js chunk files (cmw-elements.txt, cmw-diagrams.txt, cmw-props.txt).
@@ -43,19 +43,30 @@
 #if(!$report.isEmpty($cBody))<x-body>#x($cBody)</x-body>
 #end
 #end
-#body($eEl)
+#stereos($eEl)
 </x-e>
 #end
-## ---- documentation + stereotypes/tagged values
+## ---- stereotypes and tagged values
+#macro(stereos $sEl)
+#if($report.hasStereotype($sEl))
+#foreach($st in $report.getStereotypes($sEl))
+<x-s data-n="#x($st.name)">#foreach($sa in $st.ownedAttribute)#if(!$report.isEmpty($sa.name) && !$sa.name.startsWith('base_'))#set($tv = '')#set($tv = $report.getStereotypePropertyString($sEl, $st, $sa.name, ', '))#if(!$report.isEmpty($tv))<x-v data-n="#x($sa.name)">#x($tv)</x-v>#end#end#end</x-s>
+#end
+#end
+#end
+## ---- documentation + stereotypes (used for diagrams, whose details load on demand)
 #macro(body $bEl)
 #set($doc = '')
 #set($doc = $report.getComment($bEl))
 #if(!$report.isEmpty($doc))<x-doc>#x($doc)</x-doc>
 #end
-#if($report.hasStereotype($bEl))
-#foreach($st in $report.getStereotypes($bEl))
-<x-s data-n="#x($st.name)">#foreach($sa in $st.ownedAttribute)#if(!$report.isEmpty($sa.name) && !$sa.name.startsWith('base_'))#set($tv = '')#set($tv = $report.getStereotypePropertyString($bEl, $st, $sa.name, ', '))#if(!$report.isEmpty($tv))<x-v data-n="#x($sa.name)">#x($tv)</x-v>#end#end#end</x-s>
+#stereos($bEl)
 #end
+## ---- documentation of one element, written to the data/o*.js files (loaded in the background)
+#macro(docs $oEl)
+#set($odoc = '')
+#set($odoc = $report.getComment($oEl))
+#if(!$report.isEmpty($odoc))<x-o data-id="#x($oEl.ID)"><x-doc>#x($odoc)</x-doc></x-o>
 #end
 #end
 ## ---- the full Specification property list of one element
@@ -96,6 +107,12 @@
 #end
 #end
 </x-d>
+#end
+## ---- diagram skeleton for index.html: name, type, owner, detail file number, image
+#macro(dskel $kD $kChunk)
+#set($dImg = '')
+#set($dImg = $kD.image)
+<x-di data-id="#x($kD.ID)" data-n="#nm($kD)" data-o="#x($kD.owner.ID)" data-t="#x($report.getDiagramType($kD))" data-dc="$kChunk" data-iw="$!dImg.width" data-ih="$!dImg.height">#if($dImg != '')<img src="$dImg" alt="">#end</x-di>
 #end
 ## ---------- end of shared macros ----------
 #macro(toBoolean $tbV $tbDefault)
@@ -169,7 +186,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data: https: http:; media-src 'self' file: https:; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="author" content="#x($Author)">
-<meta name="generator" content="CATIA Magic Web 3.0.3">
+<meta name="generator" content="CATIA Magic Web 3.0.4">
 <title>#x($titleText)</title>
 <link rel="icon" type="image/svg+xml" href="$iconPath">
 <link rel="stylesheet" href="$cssPath">
@@ -236,6 +253,10 @@
 #set($resE = '')
 #set($resE = $file.create('cmw-elements.txt', $outE, $args))
 <x-f data-k="e" data-n="$ci" data-src="#x($outE)" data-res="#x($resE)" data-c="$fill"></x-f>
+#set($outO = $prefixLocation + 'data/o' + $ci + '.js')
+#set($resO = '')
+#set($resO = $file.create('cmw-docs.txt', $outO, $args))
+<x-f data-k="o" data-n="$ci" data-src="#x($outO)" data-res="#x($resO)" data-c="$fill"></x-f>
 #if($includeProps)
 #set($outP = $prefixLocation + 'data/p' + $ci + '.js')
 #set($resP = '')
@@ -268,26 +289,26 @@
 #set($start = $i)
 #end
 #end
-## Diagram images: printed directly here so Report Wizard exports them (inside <template> they stay inert)
+## Diagram skeletons + images: printed here so Report Wizard exports the images (inside <template> they stay inert).
+## data-dc = number of the d*.js file holding the diagram's details (same counting as the loop above).
+#set($dc = 1)#set($dn = 0)
 #foreach($d in $Diagram)
-#set($dImg = '')
-#set($dImg = $d.image)
-#if($dImg != '')<x-di data-id="#x($d.ID)" data-iw="$!dImg.width" data-ih="$!dImg.height"><img src="$dImg" alt=""></x-di>
-#end
+#if($dn == $diagramChunkSize)#set($dc = $dc + 1)#set($dn = 0)#end
+#set($dn = $dn + 1)
+#dskel($d $dc)
 #end
 </template>
 #else
 ## ---------- inline mode (DataFiles=false): everything in this page, like 3.0.1 ----------
 <template id="cmw-data">
+#foreach($d in $Diagram)
+#dskel($d 0)
+#end
 #foreach($e in $scope)
-#if(!$report.isNull($e))#elem($e)#if($includeProps)#props($e)#end#end
+#if(!$report.isNull($e))#elem($e)#docs($e)#if($includeProps)#props($e)#end#end
 #end
 #foreach($d in $Diagram)
 #dia($d)
-#set($dImg = '')
-#set($dImg = $d.image)
-#if($dImg != '')<x-di data-id="#x($d.ID)" data-iw="$!dImg.width" data-ih="$!dImg.height"><img src="$dImg" alt=""></x-di>
-#end
 #end
 </template>
 #end

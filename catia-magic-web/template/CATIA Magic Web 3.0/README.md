@@ -1,4 +1,4 @@
-# CATIA Magic Web 3.0 (3.0.3) – Report Wizard template
+# CATIA Magic Web 3.0 (3.0.4) – Report Wizard template
 
 Publishes the model as a website that opens straight from disk (`file://`) or from any web server, and stays fast on large models.
 
@@ -26,7 +26,7 @@ Copy this folder to `<install dir>/data/templates/`, or use **Tools ▸ Report W
 ## Files
 
 - `web/index.html`: main template (shell page, data-file loops, diagram image references).
-- `web/cmw-elements.txt`, `web/cmw-diagrams.txt`, `web/cmw-props.txt`: sub-templates run by `$file.create()`. They are generated from the repository's `source/` folder; edit `source/macros.vm` there and run `build.py`.
+- `web/cmw-elements.txt`, `web/cmw-docs.txt`, `web/cmw-diagrams.txt`, `web/cmw-props.txt`: sub-templates run by `$file.create()`. They are generated from the repository's `source/` folder; edit `source/macros.vm` there and run `build.py`.
 - `web/js/cmw.js`, `web/css/cmw.css`: viewer and styles.
 - `web/js/vendor/purify.min.js`: DOMPurify 3.4.17 (license alongside).
 

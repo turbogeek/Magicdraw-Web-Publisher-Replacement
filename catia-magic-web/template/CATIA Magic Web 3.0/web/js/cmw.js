@@ -15,7 +15,7 @@
   const bool = (v, d) => (v === 'true' ? true : v === 'false' ? false : d);
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
   const SVG_NS = 'http://www.w3.org/2000/svg';
-  const VERSION = '3.0.3';
+  const VERSION = '3.0.4';
 
   /** Tiny DOM builder: h('div', {class:'x', onclick: fn}, child, 'text', [more]) */
   function h(tag, attrs, ...kids) {
@@ -187,7 +187,17 @@
     if (bar && fraction != null) { bar.classList.add('cmw-determinate'); bar.style.width = Math.round(Math.max(0.03, Math.min(1, fraction)) * 100) + '%'; }
   }
 
-  const kids = (node, tag) => Array.from(node.children).filter((c) => c.localName === tag);
+  // Children of a node grouped by tag, computed once per node (a filter per lookup was ~25 % of load time)
+  const kidCache = new WeakMap();
+  const kids = (node, tag) => {
+    let m = kidCache.get(node);
+    if (!m) {
+      m = new Map();
+      for (let c = node.firstElementChild; c; c = c.nextElementSibling) { const l = m.get(c.localName); l ? l.push(c) : m.set(c.localName, [c]); }
+      kidCache.set(node, m);
+    }
+    return m.get(tag) || [];
+  };
   const boxes = (node, tag) => kids(node, tag).map((b) => ({ x: +b.dataset.x, y: +b.dataset.y, w: +b.dataset.w, h: +b.dataset.h }))
     .filter((b) => Number.isFinite(b.x) && Number.isFinite(b.y) && b.w > 0 && b.h > 0);
   const readProps = (node) => kids(node, 'x-p').map((p) => ({
@@ -196,18 +206,20 @@
   })).filter((p) => p.values.length);
   function readBody(node, rec) {
     const doc = kids(node, 'x-doc')[0];
-    if (doc) rec.doc = doc.textContent;
+    if (doc) { rec.doc = doc.textContent; rec.docLoaded = true; }
     for (const s of kids(node, 'x-s')) rec.stereos.push({ name: s.dataset.n || '', tags: kids(s, 'x-v').map((v) => ({ name: v.dataset.n || '', value: v.textContent })) });
     const inlineProps = readProps(node); // 3.0.0/3.0.1 wrote properties inside the element
     if (inlineProps.length) { rec.props = inlineProps; rec.propsLoaded = true; }
   }
   const blank = (node, chunk) => ({
     id: node.dataset.id, name: toPlain(decodeEntities(node.dataset.n || ''), 120), type: node.dataset.t || '', owner: node.dataset.o || '',
-    rel: node.dataset.rel === '1', isDiagram: false, doc: '', stereos: [], props: [], propsLoaded: false, pchunk: chunk || 0,
+    rel: node.dataset.rel === '1', isDiagram: false, doc: '', docLoaded: false, stereos: [], props: [], propsLoaded: false, pchunk: chunk || 0,
     children: [], relations: [], appearsIn: [], ends: null, file: ''
   });
   function addElement(node, chunk) {
     if (!node.dataset.id) return;
+    const prev = model.get(node.dataset.id);
+    if (prev && prev.isDiagram) { prev.pchunk = prev.pchunk || chunk; return; } // diagram skeleton already known
     const rec = blank(node, chunk);
     readBody(node, rec);
     if (rec.rel) {
@@ -222,45 +234,70 @@
       const plain = toPlain(rec.body, 80);
       if (plain && (!rec.name || /^comment\b/i.test(rec.name) || rec.name === rec.type)) rec.name = plain;
     }
-    const prev = model.get(rec.id);
-    if (prev && prev.isDiagram) return; // diagram record already has the richer data
     model.set(rec.id, rec);
   }
+  /** 3.0.4: <x-di> in the page = diagram skeleton (name/type/owner/detail file/image). Older output: image only. */
+  function addDiagramSkeleton(node) {
+    const id = node.dataset.id;
+    const img = node.querySelector('img');
+    let src = img ? img.getAttribute('src') || '' : '';
+    if (/^Image \[/.test(src)) src = '';
+    if (src) images.set(id, { src, w: parseFloat(node.dataset.iw) || 0, h: parseFloat(node.dataset.ih) || 0 });
+    if (node.dataset.t == null) return; // pre-3.0.4: image reference only
+    const rec = blank(node, 0);
+    Object.assign(rec, { isDiagram: true, dtype: rec.type, img: src, imgW: parseFloat(node.dataset.iw) || 0, imgH: parseFloat(node.dataset.ih) || 0,
+      dchunk: +node.dataset.dc || 0, detailLoaded: false, frame: [], shapes: [] });
+    model.set(id, rec);
+    diagrams.push(rec);
+    skeletons = true;
+  }
+  /** Diagram details (documentation, stereotypes, shapes, bounds); merges into the skeleton when there is one. */
   function addDiagram(node) {
     if (!node.dataset.id) return;
     const prev = model.get(node.dataset.id);
-    const rec = blank(node, prev ? prev.pchunk : 0);
+    const rec = prev && prev.isDiagram ? prev : blank(node, prev ? prev.pchunk : 0);
+    if (rec !== prev) {
+      if (prev) { rec.doc = prev.doc; rec.docLoaded = prev.docLoaded; rec.props = prev.props; rec.propsLoaded = prev.propsLoaded; }
+      rec.isDiagram = true;
+      rec.dtype = rec.type;
+      // 3.0.1 wrote <x-img><img></x-img> inside the diagram; 3.0.0 wrote data-img (ignore Cameo's "Image [id=...]" text)
+      const imgEl = node.querySelector(':scope > x-img img');
+      let src = imgEl ? imgEl.getAttribute('src') || '' : node.dataset.img || '';
+      if (/^Image \[/.test(src)) src = '';
+      rec.img = src;
+      rec.imgW = parseFloat(node.dataset.iw) || 0;
+      rec.imgH = parseFloat(node.dataset.ih) || 0;
+      model.set(rec.id, rec);
+      diagrams.push(rec);
+    }
+    rec.stereos = [];
     readBody(node, rec);
-    if (!rec.doc && prev) rec.doc = prev.doc;
-    if (!rec.propsLoaded && prev) { rec.props = prev.props; rec.propsLoaded = prev.propsLoaded; }
-    rec.isDiagram = true;
-    rec.dtype = rec.type;
-    // 3.0.1 wrote <x-img><img></x-img> inside the diagram; 3.0.0 wrote data-img (ignore Cameo's "Image [id=...]" text)
-    const imgEl = node.querySelector(':scope > x-img img');
-    let src = imgEl ? imgEl.getAttribute('src') || '' : node.dataset.img || '';
-    if (/^Image \[/.test(src)) src = '';
-    rec.img = src;
-    rec.imgW = parseFloat(node.dataset.iw) || 0;
-    rec.imgH = parseFloat(node.dataset.ih) || 0;
+    rec.docLoaded = true;
     rec.frame = boxes(node, 'x-pb');
-    const u = kids(node, 'x-u')[0]; // 3.0.2: union of all drawn content, computed in the template
+    const u = kids(node, 'x-u')[0]; // union of all drawn content, computed in the template
     if (u) {
       const x0 = +u.dataset.x0, y0 = +u.dataset.y0, x1 = +u.dataset.x1, y1 = +u.dataset.y1;
       if ([x0, y0, x1, y1].every(Number.isFinite) && x1 > x0 && y1 > y0) rec.frame = [{ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }];
     }
     rec.shapes = kids(node, 'x-h').map((hn) => ({ ref: hn.dataset.ref, rel: hn.dataset.rel === '1', boxes: boxes(hn, 'x-b') }));
-    model.set(rec.id, rec);
-    diagrams.push(rec);
+    // "Appears in" index, built as diagram details arrive
+    const seen = new Set();
+    for (const s of rec.shapes) {
+      if (seen.has(s.ref)) continue;
+      seen.add(s.ref);
+      const t = model.get(s.ref);
+      if (t && !t.appearsIn.includes(rec.id)) t.appearsIn.push(rec.id);
+    }
+    rec.detailLoaded = true;
   }
   function addProps(node) {
     const rec = model.get(node.dataset.id);
     if (rec) { rec.props = readProps(node); rec.propsLoaded = true; }
   }
-  function addImage(node) {
-    const img = node.querySelector('img');
-    let src = img ? img.getAttribute('src') || '' : '';
-    if (/^Image \[/.test(src)) src = '';
-    if (src) images.set(node.dataset.id, { src, w: parseFloat(node.dataset.iw) || 0, h: parseFloat(node.dataset.ih) || 0 });
+  function addDocs(node) {
+    const rec = model.get(node.dataset.id);
+    const doc = kids(node, 'x-doc')[0];
+    if (rec && doc) { rec.doc = doc.textContent; rec.docLoaded = true; }
   }
   async function ingestFragment(frag, chunk) {
     let i = 0;
@@ -268,8 +305,9 @@
       switch (node.localName) {
         case 'x-e': addElement(node, chunk); break;
         case 'x-d': addDiagram(node); break;
+        case 'x-o': addDocs(node); break;
         case 'x-pp': addProps(node); break;
-        case 'x-di': addImage(node); break;
+        case 'x-di': addDiagramSkeleton(node); break;
         default: break;
       }
       if ((++i & 255) === 0) await maybeYield();
@@ -300,22 +338,73 @@
     });
     return f.promise;
   }
-  async function ingestChunk(f) {
-    const text = await loadChunk(f);
-    const tpl = document.createElement('template');
-    tpl.innerHTML = text; // inert: <template> content never runs scripts or loads images
-    await maybeYield();
-    await ingestFragment(tpl.content, f.k === 'e' ? f.n : 0);
+  /** Load + parse a data file once; concurrent callers share the same promise. */
+  function ingestChunk(f) {
+    if (!f.ingest) f.ingest = (async () => {
+      const text = await loadChunk(f);
+      const tpl = document.createElement('template');
+      tpl.innerHTML = text; // inert: <template> content never runs scripts or loads images
+      await maybeYield();
+      await ingestFragment(tpl.content, f.k === 'e' ? f.n : 0);
+      if (f.k === 'o') for (const r of model.values()) if (r.pchunk === f.n && !r.isDiagram) r.docLoaded = true;
+      if (f.k === 'p') for (const r of model.values()) if (r.pchunk === f.n) r.propsLoaded = true;
+    })();
+    return f.ingest;
   }
+  const fileFor = (k, n) => files.find((x) => x.k === k && x.n === n);
   /** Specification properties are loaded on demand, one data file at a time. */
   function ensureProps(rec) {
     if (!rec || rec.propsLoaded || !rec.pchunk) return Promise.resolve();
-    const f = files.find((x) => x.k === 'p' && x.n === rec.pchunk);
+    const f = fileFor('p', rec.pchunk);
     if (!f) { rec.propsLoaded = true; return Promise.resolve(); }
-    if (!f.ingest) f.ingest = ingestChunk(f).then(() => {
-      for (const r of model.values()) if (r.pchunk === f.n) r.propsLoaded = true;
-    });
-    return f.ingest;
+    return ingestChunk(f);
+  }
+  /** Documentation (elements: o*.js; diagrams: their d*.js file). */
+  function ensureDocs(rec) {
+    if (!rec || rec.docLoaded) return Promise.resolve();
+    if (rec.isDiagram) return ensureDiagram(rec);
+    const f = rec.pchunk && fileFor('o', rec.pchunk);
+    if (!f) { rec.docLoaded = true; return Promise.resolve(); }
+    return ingestChunk(f).catch(() => { rec.docLoaded = true; });
+  }
+  function ensureDiagram(rec) {
+    if (!rec || !rec.isDiagram || rec.detailLoaded) return Promise.resolve();
+    const f = rec.dchunk && fileFor('d', rec.dchunk);
+    if (!f) { rec.detailLoaded = true; rec.docLoaded = true; return Promise.resolve(); }
+    return ingestChunk(f).catch(() => { rec.detailLoaded = true; rec.docLoaded = true; });
+  }
+
+  // ---- background indexing: documentation and diagram details after the page is usable
+  const bg = { total: 0, done: 0, ready: true, waiters: [] };
+  let skeletons = false;
+  const indexed = () => bg.ready;
+  /** Resolve when documentation and diagram details are fully loaded. */
+  const whenIndexed = () => (bg.ready ? Promise.resolve() : new Promise((r) => bg.waiters.push(r)));
+  function bgStatus() {
+    const el = document.getElementById('cmw-indexing');
+    if (!el) return;
+    if (bg.ready) { el.hidden = true; return; }
+    el.hidden = false;
+    el.lastChild.textContent = 'Indexing documentation and diagrams… ' + Math.round((100 * bg.done) / (bg.total || 1)) + '%';
+  }
+  const backgroundQueue = () => files.filter((f) => f.k === 'o').concat(skeletons ? files.filter((f) => f.k === 'd') : []);
+  async function backgroundLoad() {
+    const queue = backgroundQueue();
+    if (!queue.length) { bg.ready = true; bgStatus(); bg.waiters.splice(0).forEach((fn) => fn()); return; }
+    bg.total = queue.length; bg.done = 0; bg.ready = false;
+    bgStatus();
+    const t = performance.now();
+    for (const f of queue) {
+      try { await ingestChunk(f); } catch (err) { console.warn('[CMW] ' + f.src + ': ' + err.message); }
+      bg.done++;
+      bgStatus();
+      await new Promise((r) => setTimeout(r, 0)); // stay out of the way of clicks and scrolling
+    }
+    for (const r of model.values()) { if (!r.virtual) { if (!r.isDiagram) r.docLoaded = true; else { r.detailLoaded = true; r.docLoaded = true; } } }
+    bg.ready = true;
+    loadLog.push(['background index', Math.round(performance.now() - t)]);
+    bgStatus();
+    bg.waiters.splice(0).forEach((fn) => fn());
   }
 
   async function loadAll() {
@@ -327,7 +416,7 @@
     if (manifest) {
       for (const n of Array.from(manifest.content.children)) {
         if (n.localName === 'x-f') files.push({ k: n.dataset.k, n: +n.dataset.n, src: n.dataset.src, res: n.dataset.res || '', c: +n.dataset.c || 0, state: 'pending' });
-        else if (n.localName === 'x-di') addImage(n);
+        else if (n.localName === 'x-di') addDiagramSkeleton(n);
       }
       manifest.remove();
     }
@@ -341,7 +430,9 @@
       inline.remove();
       mark('inline data', t);
     }
-    const queue = files.filter((f) => f.k === 'e').concat(files.filter((f) => f.k === 'd'));
+    // Startup needs only the elements. With diagram skeletons (3.0.4+), diagram details and documentation load
+    // later; older publications have no skeletons, so their diagram files are still loaded now.
+    const queue = files.filter((f) => f.k === 'e').concat(skeletons ? [] : files.filter((f) => f.k === 'd'));
     const totalItems = queue.reduce((s, f) => s + (f.c || 1), 0) || 1;
     let doneItems = 0;
     for (let i = 0; i < queue.length; i++) {
@@ -358,7 +449,11 @@
     await finalize();
     mark('index', t);
     if (inlineMode || !files.some((f) => f.k === 'p')) for (const r of model.values()) r.propsLoaded = true;
-    loadLog.push(['total', Math.round(performance.now() - T0)]);
+    if (inlineMode || !files.some((f) => f.k === 'o')) for (const r of model.values()) if (!r.isDiagram) r.docLoaded = true;
+    if (inlineMode || !skeletons) for (const d of diagrams) { d.detailLoaded = true; d.docLoaded = true; }
+    // anything left for the background marks the index as not ready yet (search/"Appears in"/PDF wait for it)
+    bg.ready = !backgroundQueue().length;
+    loadLog.push(['startup total', Math.round(performance.now() - T0)]);
     console.info('[CMW] loaded ' + model.size + ' records, ' + diagrams.length + ' diagrams in ' + loadLog[loadLog.length - 1][1] + ' ms');
   }
 
@@ -367,7 +462,6 @@
       const im = images.get(d.id);
       if (im && !d.img) { d.img = im.src; d.imgW = d.imgW || im.w; d.imgH = d.imgH || im.h; }
     }
-    // diagrams that only have an image (data file missing) still get a record from the element list
     let i = 0;
     for (const rec of model.values()) {
       const owner = model.get(rec.owner);
@@ -379,15 +473,6 @@
       const touch = new Set([...rec.ends.src, ...rec.ends.tgt, ...rec.ends.any].map((e) => e.ref));
       for (const id of touch) model.get(id)?.relations.push(rec.id);
       if ((++i & 1023) === 0) await maybeYield();
-    }
-    for (const d of diagrams) {
-      const seen = new Set();
-      for (const s of d.shapes) {
-        if (seen.has(s.ref)) continue;
-        seen.add(s.ref);
-        model.get(s.ref)?.appearsIn.push(d.id);
-      }
-      await maybeYield();
     }
     const rank = (r) => (r.virtual ? 4 : r.rel ? 3 : r.isDiagram ? 2 : /package|model|profile/i.test(r.type) ? 0 : 1);
     const cmp = (a, b) => { const A = model.get(a), B = model.get(b); return rank(A) - rank(B) || collator.compare(A.name || A.type, B.name || B.type); };
@@ -610,6 +695,7 @@
 
     sidebar = h('aside', { class: 'cmw-sidebar', 'aria-label': 'Model browser' }, tabs, tools,
       h('div', { class: 'cmw-trees' }, treeView.el, diagramView.el, favView.el),
+      h('div', { id: 'cmw-indexing', class: 'cmw-indexing', role: 'status', hidden: true }, h('span', { class: 'cmw-spin cmw-spin-sm' }), h('span', null, '')),
       h('footer', { class: 'cmw-side-foot' }, h('a', { href: '#/about', title: 'About this publication' }, 'CATIA Magic Web ' + VERSION), cfg.generated ? ' \u00B7 ' + cfg.generated : ''));
     const splitter = h('div', { class: 'cmw-splitter', role: 'separator', 'aria-orientation': 'vertical', 'aria-label': 'Resize model browser', tabindex: '0' });
     content = h('main', { class: 'cmw-content', id: 'cmw-content', tabindex: '-1' });
@@ -923,6 +1009,10 @@
     }
     const { el: elementCount, rel: relCount } = showHome.stats;
     const homeDiag = cfg.homeDiagram && model.get(cfg.homeDiagram);
+    if (homeDiag && !homeDiag.detailLoaded) { // clickable shapes need the diagram's details
+      const hash = location.hash;
+      ensureDiagram(homeDiag).then(() => { if (location.hash === hash) showHome(); });
+    }
     const stat = (n, t) => h('div', { class: 'cmw-stat' }, h('span', { class: 'cmw-stat-n' }, n.toLocaleString()), h('span', { class: 'cmw-stat-t' }, t));
     const hero = h('section', { class: 'cmw-hero' },
       h('div', { class: 'cmw-hero-text' },
@@ -1024,9 +1114,14 @@
     const status = h('p', { class: 'cmw-muted', role: 'status' });
     const run = () => {
       storage.set('cmw3:sdocs', docsBox.checked);
+      if (docsBox.checked && !indexed()) {
+        const hash = location.hash;
+        whenIndexed().then(() => { if (location.hash === hash) run(); });
+      }
       const hits = search(q, { docs: docsBox.checked });
       list.textContent = '';
-      status.textContent = hits.length.toLocaleString() + ' result' + (hits.length === 1 ? '' : 's') + (hits.length > 500 ? ' (showing first 500)' : '');
+      status.textContent = hits.length.toLocaleString() + ' result' + (hits.length === 1 ? '' : 's') + (hits.length > 500 ? ' (showing first 500)' : '') +
+        (docsBox.checked && !indexed() ? ' so far \u2014 still indexing documentation, results will update' : '');
       for (const rec of hits.slice(0, 500)) {
         const path = ownerPath(rec).map(label).join(' \u203A ');
         list.append(h('li', null, h('a', { href: href(rec.id) }, icon(rec), h('span', { class: 'cmw-rname' }, label(rec))),
@@ -1059,6 +1154,13 @@
     }
     currentId = id;
     revealInTree(id, true);
+    if (!rec.docLoaded || (rec.isDiagram && !rec.detailLoaded)) {
+      const hash = location.hash;
+      const pending = rec.isDiagram ? ensureDiagram(rec) : ensureDocs(rec);
+      const shown = setTimeout(() => setContent(h('section', { class: 'cmw-card' }, spinnerBlock('Loading ' + label(rec) + '\u2026')), label(rec)), 120);
+      pending.then(() => { clearTimeout(shown); if (location.hash === hash) showElement(id); });
+      return;
+    }
 
     const favBtn = h('button', {
       class: 'cmw-btn cmw-fav' + (favorites.has(id) ? ' cmw-on' : ''), 'aria-pressed': String(favorites.has(id)), title: 'Favorite',
@@ -1159,7 +1261,20 @@
     if (dinfo) for (const t of dinfo.tags) info.push([t.name, t.value]);
     const rail = h('aside', { class: 'cmw-rail' },
       h('section', { class: 'cmw-card' }, h('h3', null, 'Details'), h('dl', { class: 'cmw-dl' }, info.map(([k, v]) => [h('dt', null, k), h('dd', null, v)]))),
-      cfg.appearsIn && rec.appearsIn.length ? h('section', { class: 'cmw-card' }, h('h3', null, 'Appears in'), h('ul', { class: 'cmw-links' }, rec.appearsIn.map((d) => h('li', null, linkTo(d))))) : null);
+      cfg.appearsIn && (rec.appearsIn.length || !indexed()) ? h('section', { class: 'cmw-card' }, h('h3', null, 'Appears in'),
+        rec.appearsIn.length ? h('ul', { class: 'cmw-links' }, rec.appearsIn.map((d) => h('li', null, linkTo(d)))) : null,
+        indexed() ? null : h('p', { class: 'cmw-muted cmw-small cmw-indexing-note' }, h('span', { class: 'cmw-spin cmw-spin-sm' }), ' Still indexing diagrams\u2026')) : null);
+    if (!indexed() && cfg.appearsIn) {
+      const hash = location.hash;
+      whenIndexed().then(() => {
+        if (location.hash !== hash) return;
+        const note = document.querySelector('.cmw-indexing-note');
+        if (!note) return;
+        const card = note.parentElement;
+        card.querySelector('ul')?.remove();
+        note.replaceWith(rec.appearsIn.length ? h('ul', { class: 'cmw-links' }, rec.appearsIn.map((d) => h('li', null, linkTo(d)))) : h('p', { class: 'cmw-muted cmw-small' }, 'Not shown on any diagram.'));
+      });
+    }
 
     setContent([
       head,
@@ -1449,6 +1564,12 @@
     const setProg = (t, f) => { progText.textContent = t; prog.firstChild.style.width = Math.round(f * 100) + '%'; };
     setContent(h('section', { class: 'cmw-card cmw-narrow' }, h('h1', { class: 'cmw-h1' }, 'Building PDF \u2014 ', docTitle), prog, progText), 'PDF');
     await maybeYield(true);
+    if (!indexed()) {
+      const tick = setInterval(() => setProg('Indexing documentation and diagrams \u2014 ' + Math.round((100 * bg.done) / (bg.total || 1)) + '%', 0.3 * (bg.done / (bg.total || 1))), 200);
+      await whenIndexed();
+      clearInterval(tick);
+      if (stale()) return;
+    }
     if (o.p) {
       const needed = [...new Set(sections.map((x) => x.rec).filter((r) => !r.propsLoaded && r.pchunk).map((r) => r.pchunk))];
       for (let i = 0; i < needed.length; i++) {
@@ -1574,7 +1695,7 @@
   function showAbout() {
     currentId = null;
     const failed = files.filter((f) => f.state === 'failed');
-    const byKind = { e: 'Elements', d: 'Diagrams', p: 'Properties (on demand)' };
+    const byKind = { e: 'Elements (startup)', o: 'Documentation (background)', d: skeletons ? 'Diagram details (background)' : 'Diagrams', p: 'Properties (on demand)' };
     setContent([
       h('header', { class: 'cmw-page-head' }, h('h1', { class: 'cmw-h1' }, 'About this publication')),
       h('div', { class: 'cmw-split' },
@@ -1588,7 +1709,7 @@
               h('td', null, byKind[f.k] || f.k),
               h('td', null, f.c ? f.c.toLocaleString() : ''),
               h('td', null, h('span', { class: 'cmw-dirchip' + (f.state === 'failed' ? ' cmw-bad' : f.state === 'loaded' ? ' cmw-dir-out' : '') },
-                f.state === 'loaded' ? 'loaded' + (f.ms != null ? ' · ' + f.ms + ' ms' : '') : f.state === 'failed' ? 'failed: ' + f.error : f.k === 'p' ? 'loads when needed' : f.state)))))) : null,
+                f.state === 'loaded' ? 'loaded' + (f.ms != null ? ' · ' + f.ms + ' ms' : '') : f.state === 'failed' ? 'failed: ' + f.error : f.k === 'p' ? 'loads when needed' : f.state === 'pending' ? 'queued' : f.state)))))) : null,
           failed.length ? h('div', { class: 'cmw-notice cmw-notice-bad' }, h('strong', null, failed.length + ' file(s) could not be loaded. '),
             'Make sure the page was copied together with its ', h('code', null, '_files'), ' folder. If the files are missing in the generated output, check the Report Wizard log (Report Wizard wrote: ',
             failed.map((f) => f.res || '(empty)').join(', '), ').') : null),
@@ -1627,17 +1748,25 @@
       showFatal('The model could not be read', String(err && err.message || err));
       return;
     }
-    if (!model.size) {
-      showFatal('No model data found', files.length ? 'None of the ' + files.length + ' data files could be loaded.' : 'This page does not contain model data.');
+    const elementFiles = files.filter((f) => f.k === 'e');
+    if (!model.size || (elementFiles.length && elementFiles.every((f) => f.state === 'failed'))) {
+      showFatal('No model data found', elementFiles.length ? 'None of the ' + elementFiles.length + ' model data files could be loaded.' : 'This page does not contain model data.');
       return;
     }
     loadStatus('Opening…', 1);
     await maybeYield(true);
     buildShell();
+    bgStatus();
     window.addEventListener('hashchange', route);
     route();
-    const failed = files.filter((f) => f.state === 'failed' && f.k !== 'p');
-    if (failed.length) banner(failed.length + ' of ' + files.filter((f) => f.k !== 'p').length + ' data files could not be loaded, so part of the model is missing.', '#/about', 'Details');
+    setTimeout(() => backgroundLoad(), 300); // documentation + diagram details, after the first page is on screen
+    const startupKinds = skeletons ? ['e'] : ['e', 'd'];
+    const failed = files.filter((f) => f.state === 'failed' && startupKinds.includes(f.k));
+    if (failed.length) banner(failed.length + ' of ' + files.filter((f) => startupKinds.includes(f.k)).length + ' model data files could not be loaded, so part of the model is missing.', '#/about', 'Details');
+    whenIndexed().then(() => {
+      const late = files.filter((f) => f.state === 'failed' && (f.k === 'o' || (skeletons && f.k === 'd')));
+      if (late.length) banner(late.length + ' documentation/diagram data file(s) could not be loaded.', '#/about', 'Details');
+    });
   }
   function banner(text, link, linkText) {
     const b = h('div', { class: 'cmw-banner', role: 'alert' }, h('span', null, text), link ? h('a', { href: link }, linkText) : null,

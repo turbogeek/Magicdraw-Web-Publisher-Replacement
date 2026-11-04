@@ -551,3 +551,8 @@ h3.cmw-sec-title { font-size: 14pt; } h4.cmw-sec-title { font-size: 12pt; } h5.c
 .cmw-cimg figcaption { margin-top: 6px; font-size: 12px; }
 .cmw-inline-img { display: block; max-width: 240px; max-height: 160px; object-fit: contain; background: var(--canvas); border: 1px solid var(--line); border-radius: 6px; padding: 4px; }
 .cmw-book .cmw-cimg img { max-height: 10cm; }
+/* 3.0.4: background indexing indicator */
+.cmw-indexing { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; background: var(--panel-2); }
+.cmw-spin-sm { width: 12px; height: 12px; border-width: 2px; vertical-align: -2px; }
+.cmw-indexing-note { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; }
+@media print { .cmw-indexing, .cmw-indexing-note { display: none !important; } }

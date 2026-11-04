@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.4 – faster startup
+
+- **Skeleton-first loading.** At startup only the element files (the model tree) are parsed. Documentation (new `data/o*.js` files, written by the new `cmw-docs.txt` sub-template) and diagram details (`d*.js`) load in the background after the page is usable. Any page that needs them sooner loads just its own file. On the 60k-element test model: usable after 1.5–2.0 s instead of 5.2–6.8 s.
+- **Diagram skeletons in the page.** Name, type, owner, image and detail-file number for every diagram, so the Diagrams tab, home page and gallery work before diagram details load.
+- **Indexing states.** A sidebar indicator shows progress; documentation search, *Appears in* and PDF export say they're indexing and update automatically.
+- Faster parsing: each element's children are grouped in one pass (previously a filter per lookup).
+- Failure handling covers background files too: a warning banner if a documentation or diagram file is missing, while the rest still works.
+- Docs: performance table, why compression doesn't speed up `file://`, and how to turn on server compression (IIS, Apache, nginx). Removed SharePoint as a hosting suggestion; document libraries download `.html` files.
+- Tests: new `lazytest.js`; 58 checks in total.
+
 ## 3.0.3
 
 - **«CustomImageHolder» images render as images.** Their `content` (base64 PNG/GIF/JPEG/BMP/WebP, or SVG text), `format` (`PNG`, `SVG`, `MIME: image/...`) and `location` are decoded into an image, with the format and source as a caption. The raw encoding is no longer shown, and the internal stereotype chip is hidden. Long base64 image data in any other value is also shown as an image.

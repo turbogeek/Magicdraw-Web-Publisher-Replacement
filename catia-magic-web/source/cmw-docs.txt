@@ -1,0 +1,15 @@
+@@MACROS@@
+##  CATIA Magic Web 3.0 data file (documentation, loaded in the background after startup).
+CMW_CHUNK('o', $chunk, String.raw`
+#if($items != '')
+#foreach($e in $items)
+#if(!$report.isNull($e))#docs($e)#end
+#end
+#else
+#set($k = 0)
+#foreach($e in $all)
+#if($k >= $from && $k < $to && !$report.isNull($e))#docs($e)#end
+#set($k = $k + 1)
+#end
+#end
+`);
