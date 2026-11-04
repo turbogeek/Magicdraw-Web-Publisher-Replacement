@@ -11,7 +11,7 @@ Use at your own risk! **No Warranty!** No support from me (unless you are nice)!
 <img width="1481" height="455" alt="image" src="https://github.com/user-attachments/assets/99918e54-10c0-4516-83a1-ff5d0693a863" />
 
 **2**  From the Report Wizard, 1) Press Import, 2) select the downloaded mrzip 3) press Open.
-- 
+
 <img width="1024" height="647" alt="image" src="https://github.com/user-attachments/assets/82ca73ee-fb21-41f9-9042-f8704c0aa529" />
 
 **3** The report will show up in the Default Template section as **Web Publisher 3.0** and will be used like the 2.0 version
