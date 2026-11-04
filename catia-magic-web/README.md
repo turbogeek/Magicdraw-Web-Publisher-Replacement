@@ -4,7 +4,7 @@ A Report Wizard template for **CATIA Magic / Cameo / MagicDraw** that publishes 
 It is a ground-up redesign of the built-in *Web Publisher 2.0* template.
 
 - **Opens straight from disk.** Double-click `index.html`: no web server, no browser flags. The same output also works on any static web host.
-- **Built for big models.** It shows a loading screen immediately, loads the data in steps, and loads properties only when needed. A 60,000-element model is usable in under 4 seconds, with no freezes.
+- **Built for big models.** It shows a loading screen immediately and loads only the model tree at startup. Documentation and diagram details are indexed in the background, and properties load on demand. A 60,000-element model is usable in under 2 seconds, with no freezes.
 - **Modern and safe.** It uses no frameworks, `eval` or inline scripts, and sets a strict Content-Security-Policy. Rich text is sanitized with DOMPurify.
 - **Readable.** Model tree, diagram viewer with clickable shapes, search, PDF export, and Light / Dark / Kawaii themes.
 
@@ -56,13 +56,14 @@ MyModel.html          ← the page (about 30 KB)
 MyModel_files/
 ├── css/  js/  images/
 ├── data/             ← model data, loaded progressively
-│   ├── e1.js … eN.js    elements (1,500 per file)
-│   ├── d1.js … dN.js    diagram details (10 per file)
+│   ├── e1.js … eN.js    elements: the model tree (1,500 per file, loaded at startup)
+│   ├── o1.js … oN.js    documentation (loaded in the background)
+│   ├── d1.js … dN.js    diagram details (10 per file, background or on demand)
 │   └── p1.js … pN.js    Specification properties (loaded on demand)
 └── …                 ← diagram images and copied attachments
 ```
 
-To share the publication, zip both together, or copy them to any web server.
+To share the publication, zip both together, or copy them to any web server (see [Hosting](#hosting-turn-on-compression)).
 
 ---
 
@@ -78,8 +79,12 @@ To share the publication, zip both together, or copy them to any web server.
 
 ### Loading
 
-The loading card appears immediately and shows its progress (*Loading model elements, part 22 of 55*).
+The loading card appears immediately and shows its progress (*Loading model elements, part 22 of 40*).
 If nothing changes for 10 seconds, a **"Nothing happening?"** checklist appears. It works even when JavaScript is blocked.
+
+Once the model tree has loaded, the interface is usable. Documentation and diagram details keep loading in the background; a small **"Indexing documentation and diagrams… 40 %"** note at the bottom of the sidebar shows the progress.
+Opening an element or diagram before then loads just what that page needs.
+Documentation search, *Appears in* and PDF export show an "indexing" state and update automatically when indexing completes.
 
 ![Loading screen](docs/images/loading.png)
 
@@ -186,7 +191,6 @@ The theme menu in the header offers **System** (follows the OS), **Light**, **Da
 |---|---|
 | ![Dark theme](docs/images/theme-dark-diagram.png) | ![Kawaii theme](docs/images/theme-kawaii.png) |
 
-**Kawaii (かわいい or 可愛い)** is a Japanese cultural phenomenon that translates to "cute," "adorable," or "loveable." It is much more than a simple style; it is a widespread social and artistic force emphasizing innocence, charm, playfulness, and comfort.
 ### Home page
 
 The home page shows a summary, then diagrams listed by type and the top-level packages.
@@ -268,14 +272,15 @@ flowchart LR
     H --> L
 ```
 
-1. **The shell page** (`index.html` template → `MyModel.html`, about 30 KB) contains the loading screen, a manifest of data files, and the diagram image references. It paints immediately, before any script runs.
+1. **The shell page** (`index.html` template → `MyModel.html`, about 30 KB) contains the loading screen, a manifest of data files, and a small *skeleton* for each diagram: name, type, owner, image, and which detail file holds it. It paints immediately, before any script runs.
 2. **The data files** are written by sub-templates through `$file.create(template, output, map)`. Each file is a tiny script:
    ```js
    CMW_CHUNK('e', 3, String.raw`<x-e data-id="_19_0_..." data-t="Block" data-n="Engine"> … </x-e> …`);
    ```
    `<script src>` is allowed from `file://` (unlike `fetch`/XHR), so this works everywhere.
-3. **The viewer** (`js/cmw.js`, a classic deferred script, because browsers also block ES modules on `file://`) loads the files one at a time. It parses each one into an inert `<template>` and pauses every ~40 ms so the progress bar repaints and the page never freezes. It then builds the containment tree, the relationship index and the "appears in" index.
-4. **Properties** (about 60 % of the data) load only when a Properties tab opens or a PDF needs them.
+3. **The viewer** (`js/cmw.js`, a classic deferred script, because browsers also block ES modules on `file://`) loads **only the element files** at startup: the model tree, names, types, stereotypes and relationships. It parses each one into an inert `<template>`, pausing every ~40 ms so the progress bar repaints, then builds the containment tree and relationship index.
+4. **Background indexing.** Once the first page is on screen, documentation (`o*.js`) and diagram details (`d*.js`: shapes, bounds, documentation) load one file at a time, leaving room for clicks and scrolling between files. The *appears in* index grows as diagram details arrive. A page that needs something not yet indexed loads that one file immediately.
+5. **Properties** (about 60 % of the data) load only when a Properties tab opens or a PDF needs them.
 
 ### Key techniques
 
@@ -306,21 +311,57 @@ Inside each data file the markup uses custom tags, which the browser parses with
   <x-u data-x0="5" data-y0="5" data-x1="705" data-y1="425"></x-u>
   <x-h data-ref="ELEMENT_ID"><x-b data-x="320" data-y="90" data-w="160" data-h="90"></x-b></x-h>
 </x-d>
-<x-pp data-id="ID"><x-p data-n="Multiplicity"><x-t>1</x-t></x-p></x-pp>
+<x-pp data-id="ID"><x-p data-n="Multiplicity"><x-t>1</x-t></x-p></x-pp>     (p*.js)
+<x-o data-id="ID"><x-doc>…documentation…</x-doc></x-o>                      (o*.js)
+<x-di data-id="ID" data-n="Name" data-t="SysML Block Definition Diagram" data-o="OWNER" data-dc="3">
+  <img src="MyModel_files/…svg"></x-di>                                      (page: diagram skeleton)
 ```
 
 ---
 
 ## Performance
 
-Measured in headless Chromium from `file://` with a synthetic model (`tests/render-big.js`):
+Measured in headless Chromium from `file://` with a synthetic model (`tests/render-big.js`). Each figure is a range over repeated runs in the same session:
 
-| 60,000 elements · 150 diagrams | Web Publisher 3.0.1 (single file) | **3.0.3 (data files)** |
-|---|---|---|
-| Page (`.html`) size | 185 MB | **28 KB** |
-| Longest main-thread freeze | 9.5 s | **0.1 s** |
-| Usable after | 13.9 s | **3.7 s** |
-| Loading feedback | none | instant loading screen with progress |
+| 60,000 elements · 150 diagrams | 3.0.1 (single file) | 3.0.2 / 3.0.3 (data files) | **3.0.4 (skeleton first)** |
+|---|---|---|---|
+| Page (`.html`) size | 185 MB | 28 KB | **30 KB** |
+| Longest main-thread freeze | 9.5 s | 0.1–0.2 s | **0.1–0.2 s** |
+| Usable after | 13.9 s | 3.7–6.8 s | **1.5–2.0 s** |
+| Documentation + diagrams fully indexed | (at startup) | (at startup) | **≈ 6 s, in the background** |
+
+Where the time went in 3.0.3: reading the files from disk costs almost nothing. The cost is CPU, spent parsing the markup and building records, so **compressing the data files would not make opening from disk faster**. Loading less at startup does: 3.0.4 parses only the element files before the page is usable, and parses each element's children in one pass.
+
+While background indexing runs, the page keeps responding to clicks; the worst observed delay was about 0.25 s, on this test model's unusually heavy 2,500-shape diagrams.
+
+### Hosting: turn on compression
+
+Over a network, transfer time dominates, and the data compresses very well (5–10× on typical models). You don't need to change the template: enable compression for `.js`, `.css`, `.html` and `.svg` on the web server, and browsers decompress automatically.
+
+**IIS** (install the *Static Content Compression* feature), `web.config` next to the publication:
+```xml
+<configuration>
+  <system.webServer>
+    <urlCompression doStaticCompression="true" />
+  </system.webServer>
+</configuration>
+```
+
+**Apache** (`.htaccess`, `mod_deflate` enabled):
+```apache
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css application/javascript text/javascript image/svg+xml
+</IfModule>
+```
+
+**nginx**:
+```nginx
+gzip on;
+gzip_types text/css application/javascript image/svg+xml;
+```
+
+GitHub Pages, Netlify, Azure Static Web Apps and similar hosts compress automatically.
+SharePoint Online document libraries download `.html` files instead of displaying them, so use a web server or static host instead.
 
 ---
 
@@ -333,6 +374,7 @@ source/                 Velocity sources. Edit these, not template/…/web/*.txt
 ├── cmw-elements.txt    sub-template: elements
 ├── cmw-diagrams.txt    sub-template: diagram details
 ├── cmw-props.txt       sub-template: Specification properties
+├── cmw-docs.txt        sub-template: documentation
 └── build.py            inserts macros.vm into each template → template/CATIA Magic Web 3.0/web/
 ```
 
@@ -347,7 +389,7 @@ cd tests
 npm install
 npx playwright install chromium
 npm run build          # source/ → template/
-npm test               # build + render + 46 browser checks (functional, rich content, failure modes)
+npm test               # build + render + 58 browser checks (functional, rich content, failure modes, lazy loading)
 npm run big            # 60k-element performance run
 npm run screenshots    # regenerate docs/images
 ```
@@ -368,7 +410,8 @@ The test model includes deliberately hostile content (`<script>` in documentatio
 | Diagrams show "No image was exported" | The output was generated with 3.0.0; regenerate with 3.0.1 or later. |
 | Clickable shapes slightly offset | A diagram whose frame isn't at the origin, or a custom image export margin. Use the *Shown elements* tab as a fallback, and report the diagram. |
 | Favorites/theme not remembered | The browser blocks `localStorage` for local files (some Firefox/enterprise settings). Everything else still works. |
-| Very large output | Set `IncludeAllProperties = false`. |
+| Very large output | Use SVG diagram images; set `IncludeAllProperties = false`. |
+| Hosted publication loads slowly | Turn on gzip/Brotli compression on the server; see [Hosting](#hosting-turn-on-compression). |
 
 ### Compatibility
 

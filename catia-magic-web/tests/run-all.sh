@@ -9,4 +9,5 @@ node render.js "$TPL" out/small
 node browser-test.js out/small out/shots
 node richtest.js out/small out/shots
 node failmodes.js out/small "$TPL"
+node lazytest.js out/small
 echo "All suites passed."
