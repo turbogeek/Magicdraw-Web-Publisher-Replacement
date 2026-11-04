@@ -5,11 +5,17 @@ This replaces the old Web Publisher 2.0 from CATIA Magic (AKA MagicDraw or Cameo
 Use at your own risk! **No Warranty!** No support from me (unless you are nice)!
 
 ## Quick start.
-Download the file from here: https://github.com/turbogeek/Magicdraw-Web-Publisher-Replacement/blob/main/distro/Web%20Publisher3_0_4.mrzip 
+- Download the file from here: https://github.com/turbogeek/Magicdraw-Web-Publisher-Replacement/blob/main/distro/Web%20Publisher3_0_4.mrzip
+
 <img width="1481" height="455" alt="image" src="https://github.com/user-attachments/assets/99918e54-10c0-4516-83a1-ff5d0693a863" />
-From the Report Wizard, 1) Press Import, 2) select the downloaded mrzip 3) press Open.
-The report will show up in the Default Template section as Web Publisher 3.0
+- From the Report Wizard, 1) Press Import, 2) select the downloaded mrzip 3) press Open.
+- 
 <img width="1024" height="647" alt="image" src="https://github.com/user-attachments/assets/82ca73ee-fb21-41f9-9042-f8704c0aa529" />
+
+- The report will show up in the Default Template section as **Web Publisher 3.0** and will be used like the 2.0 version
+  
+<img width="748" height="578" alt="image" src="https://github.com/user-attachments/assets/626a8bde-da54-40ea-ac85-bf2aa3370e40" />
+
 
 ## Slower Start if actively developing changes to the template in the context of the git or your own cloned git.
 
